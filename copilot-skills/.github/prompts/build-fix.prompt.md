@@ -1,0 +1,1 @@
+/Users/nishantbansal/IdeaProjects/.copilot-skills/generic/.github/prompts/build-fix.prompt.md

@@ -1,0 +1,1 @@
+/Users/nishantbansal/IdeaProjects/.copilot-skills/generic/.github/skills/feature-docs/templates/README.template.md

@@ -1,0 +1,1 @@
+/Users/nishantbansal/IdeaProjects/.copilot-skills/projects/communication-dispatcher/.github/instructions/skills-index.instructions.md

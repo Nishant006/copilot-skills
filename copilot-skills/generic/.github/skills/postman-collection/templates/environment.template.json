@@ -1,0 +1,97 @@
+{
+  "_comment_GENERATION_INSTRUCTIONS": [
+    "═══════════════════════════════════════════════════════════════════════════════",
+    "ENVIRONMENT FILE GENERATION INSTRUCTIONS",
+    "═══════════════════════════════════════════════════════════════════════════════",
+    "",
+    "This template defines the structure for environment files.",
+    "When generating, follow these rules:",
+    "",
+    "1. ALWAYS include active_env as the first variable (controls everything)",
+    "2. Include <env>_base_url for EVERY supported environment",
+    "3. For EVERY API key / secret:",
+    "   - Create per-env variants: local_<key>, dev_<key>, nonprod_<key>, preprod_<key>, prod_<key>",
+    "   - Set type: 'secret' for actual credentials",
+    "   - Use a clearly-fake safe default for local (e.g., 'local-test-key-1234')",
+    "   - Use clear placeholder for non-local: 'replace-with-<env>-<purpose>'",
+    "4. Include dynamic variables (set by pre-request scripts) with empty default values",
+    "5. Include feature-specific config variables with descriptive names",
+    "6. NEVER include real credentials — all secrets are placeholders",
+    "7. When UPDATING an existing env file:",
+    "   - READ existing variables first",
+    "   - ADD new variables at the end (do NOT remove or reorder existing ones)",
+    "   - Keep existing values unchanged",
+    "   - Follow the SAME naming conventions as existing variables",
+    "8. URL patterns: get from companion.md or existing env file (never invent)",
+    "9. Port number: grep application.yml/properties for server.port",
+    "",
+    "NAMING CONVENTIONS:",
+    "  - snake_case for all variable names",
+    "  - Prefix env-specific: local_, dev_, nonprod_, preprod_, prod_",
+    "  - Prefix feature-specific: <feature>_ (e.g., rate_limit_, scheduler_)",
+    "  - Dynamic variables (set by scripts at runtime): empty initial value",
+    "  - Secret variables: type = 'secret'",
+    "  - Boolean toggles: <feature>_enabled (value: 'true' or 'false')",
+    "",
+    "VARIABLE CATEGORIES (include all that apply):",
+    "  - Environment control: active_env",
+    "  - Base URLs: <env>_base_url for each environment",
+    "  - Authentication: API keys, tokens, admin keys (per-env variants)",
+    "  - Request context: tenant, account, region, feature flags",
+    "  - Dynamic/chaining: IDs extracted by test scripts, timestamps, UUIDs",
+    "  - Feature-specific: config IDs, thresholds, test data identifiers",
+    "  - Test data: email addresses, phone numbers, user IDs for testing",
+    "═══════════════════════════════════════════════════════════════════════════════"
+  ],
+  "id": "{{GENERATED_UUID}}",
+  "name": "{{SERVICE_NAME}}",
+  "values": [
+    {
+      "_comment": "Environment control — determines which URLs and keys are active",
+      "key": "active_env",
+      "value": "local",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "_comment": "Base URLs — AI: get actual URLs from companion.md or existing env file",
+      "key": "local_base_url",
+      "value": "http://localhost:{{PORT_FROM_APPLICATION_YML}}",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "dev_base_url",
+      "value": "{{GET_FROM_COMPANION_OR_ASK_USER}}",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "nonprod_base_url",
+      "value": "{{GET_FROM_COMPANION_OR_ASK_USER}}",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "preprod_base_url",
+      "value": "{{GET_FROM_COMPANION_OR_ASK_USER}}",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "prod_base_url",
+      "value": "{{GET_FROM_COMPANION_OR_ASK_USER}}",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "_comment": "Resolved at runtime by pre-request script — do not edit manually",
+      "key": "base_url",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment",
+  "_postman_exported_using": "AI postman-collection skill"
+}

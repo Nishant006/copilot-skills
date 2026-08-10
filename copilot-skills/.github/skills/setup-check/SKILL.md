@@ -1,0 +1,1 @@
+/Users/nishantbansal/IdeaProjects/.copilot-skills/projects/communication-dispatcher/.github/skills/setup-check/SKILL.md

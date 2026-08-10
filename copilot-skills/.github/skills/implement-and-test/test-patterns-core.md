@@ -1,0 +1,1 @@
+/Users/nishantbansal/IdeaProjects/.copilot-skills/projects/communication-dispatcher/.github/skills/implement-and-test/test-patterns-core.md

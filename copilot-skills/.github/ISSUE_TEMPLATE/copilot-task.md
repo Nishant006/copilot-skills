@@ -1,0 +1,1 @@
+/Users/nishantbansal/IdeaProjects/.copilot-skills/generic/.github/ISSUE_TEMPLATE/copilot-task.md

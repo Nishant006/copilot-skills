@@ -1,0 +1,1 @@
+/Users/nishantbansal/IdeaProjects/.copilot-skills/projects/communication-dispatcher/.github/skills/blast-radius/core-components.md
