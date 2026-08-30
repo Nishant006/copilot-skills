@@ -932,6 +932,9 @@ main() {
   # Auto-link all sibling projects
   echo "🔗 Auto-linking skills into all sibling projects..."
   echo ""
+  # Ensure link-skills.sh uses this script's resolved SKILLS_ROOT,
+  # not a stale COPILOT_SKILLS_ROOT from a previous shell session.
+  export COPILOT_SKILLS_ROOT="$SKILLS_ROOT"
   source "$SKILLS_ROOT/link-skills.sh"
   link_all
 
