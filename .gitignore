@@ -1,0 +1,8 @@
+# Sibling projects living alongside copilot-skills in this folder.
+# These are independent projects (some with their own .git repos) and
+# are not part of the copilot-skills project tracked here.
+/compare/
+/dsa-learning/
+/graphify-out/
+/job-apply/
+/sd-learning/

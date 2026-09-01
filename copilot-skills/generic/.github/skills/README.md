@@ -20,6 +20,7 @@ Quick reference for all available skills in this repository. See [AGENTS.md](../
 | `idea-to-spec` | Pre-Phase 1 | Turn rough idea into brief.md | `"use the idea-to-spec skill — [idea]"` |
 | `party-mode` | Standalone | Multi-persona discussion for decisions | `"use the party-mode skill — [question]"` |
 | `workflow-help` | Standalone | Route to correct skill | `"help"` |
+| `local-review` | Standalone | Inline code review loop: comment → Copilot replies → todos → fix → clean | `"I left some review comments"` or `"use the local-review skill"` |
 
 ## Layer 2 — Repo/Domain [PROJECT-SPECIFIC]
 
