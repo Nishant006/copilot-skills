@@ -1,0 +1,23 @@
+# Local environment and secrets
+.env
+.env.*
+*.key
+*.pem
+cred.md
+
+# Dependency caches
+node_modules/
+
+# Generated reports and build artifacts
+graphify-out/
+features/
+postman/
+reports/
+coverage/
+dist/
+build/
+
+# Logs and local editor noise
+*.log
+*.tmp
+.DS_Store
