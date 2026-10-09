@@ -715,6 +715,7 @@ graphify_build_two_layer() {
     return 0
   fi
   local builder="$SKILLS_ROOT/tools/graphify_build_all.sh"
+  patch_graphify_skill_anchor
   if [ ! -x "$builder" ]; then
     if [ -f "$builder" ]; then
       chmod +x "$builder" 2>/dev/null || true
@@ -724,6 +725,34 @@ graphify_build_two_layer() {
     fi
   fi
   "$builder" --root "$(cd "$SKILLS_ROOT/.." && pwd)" 2>&1 | sed 's/^/   /'
+}
+
+# ─── Keep the user-level graphify skill anchored ──────────────────────────────
+# `graphify` resolves graphify-out/ relative to the current working directory, so
+# its bundled skill tells agents to check for the graph in cwd. From any
+# subdirectory that check fails and the agent wrongly reports "no graph found".
+# The skill lives outside this repo and is replaced on every graphify upgrade,
+# so re-apply the anchor here. Idempotent: a patched skill is left untouched.
+patch_graphify_skill_anchor() {
+  local skill="$HOME/.copilot/skills/graphify/SKILL.md"
+  [ -f "$skill" ] || return 0
+  python3 - "$skill" <<'PY' 2>/dev/null
+import sys
+p = sys.argv[1]
+t = open(p, encoding="utf-8").read()
+old = "**Fast path — existing graph:** Before doing anything else, check whether"
+new = ("**Fast path — existing graph:** Before doing anything else, anchor to the repo root with "
+       "`cd \"$(git rev-parse --show-toplevel)\"` (graphify resolves `graphify-out/` relative to the "
+       "current working directory, so a subdirectory yields a false \"graph file not found\"; if you "
+       "are not inside a git repo use `GRAPHIFY_OUT=/path/to/<repo>/graphify-out`). Then check whether")
+if new.split("(graphify resolves")[0] in t:
+    print("   ✅ graphify skill already anchored")
+elif old in t:
+    open(p, "w", encoding="utf-8").write(t.replace(old, new, 1))
+    print("   🔧 graphify skill patched to anchor at repo root")
+else:
+    print("   ⚠️  graphify skill format changed — anchor patch skipped (harmless)")
+PY
 }
 
 # ─── Install into a shell RC file ─────────────────────────────────────────────

@@ -192,6 +192,13 @@ def build_links(nodes: list[dict], policy: str) -> list[dict]:
         label = (node.get("label") or "").strip()
         if not repo or not label:
             continue
+        # External stubs (JDK/Spring types such as RuntimeException or
+        # Serializable) are referenced but never defined in any repo, so they
+        # carry no source_file. `graphify global add` collapses them onto
+        # whichever repo merges first, which would otherwise mis-attribute a
+        # cross-repo link to a repo that does not own the symbol.
+        if not (node.get("source_file") or "").strip():
+            continue
         norm = normalise(label)
         if not norm:
             continue
