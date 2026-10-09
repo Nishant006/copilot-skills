@@ -54,7 +54,7 @@ Proceed only after answers are received.
 
 > **Breadcrumb rule**: Prefix every action with `Step N/M:` per AGENTS.md §Anti-Drift & Context Persistence Protocol.
 
-> 🔒 **Graphify-First (mandatory)**: Before ANY grep in this skill for verifying class references, checking existing patterns, or understanding caller/dependency relationships, check if `graphify-out/graph.json` exists. If it does, run `graphify query "<what class does X depend on>"` or `graphify path "<ClassA>" "<ClassB>"` first. Use grep only to supplement or verify specifics.
+> 🔒 **Graphify-First (mandatory)**: Before ANY grep in this skill for verifying class references, checking existing patterns, or understanding caller/dependency relationships, anchor to the repo root with `cd "$(git rev-parse --show-toplevel)"`, then check if `graphify-out/graph.json` exists (a "graph file not found" error from a subdirectory is NOT a missing graph). If it does, run `graphify query "<what class does X depend on>"` or `graphify path "<ClassA>" "<ClassB>"` first. Use grep only to supplement or verify specifics. See `.github/instructions/graphify.instructions.md` for full protocol.
 
 ## Step 0 — Verify Entry Conditions
 

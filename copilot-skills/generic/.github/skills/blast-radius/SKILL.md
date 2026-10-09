@@ -45,7 +45,7 @@ Canonical sub-agent for impact analysis. Invoke before any rename, removal, sign
 
 > **Breadcrumb rule**: Prefix every action with `Step N/M:` per AGENTS.md §Anti-Drift & Context Persistence Protocol.
 
-> 🔒 **Graphify-First (mandatory)**: Before ANY grep in this skill, check if `graphify-out/graph.json` exists. If it does, run `graphify path "TargetName" "*"` first to get callers and dependents from the knowledge graph. Use grep only to supplement or verify graphify results. See `.github/instructions/graphify.instructions.md` for full protocol.
+> 🔒 **Graphify-First (mandatory)**: Before ANY grep in this skill, anchor to the repo root with `cd "$(git rev-parse --show-toplevel)"`, then check if `graphify-out/graph.json` exists (a "graph file not found" error from a subdirectory is NOT a missing graph). If it does, run `graphify path "TargetName" "*"` first to get callers and dependents from the knowledge graph. Use grep only to supplement or verify graphify results. See `.github/instructions/graphify.instructions.md` for full protocol.
 
 > 🌍 **Cross-repo blast radius (mandatory for shared contracts)**: the per-repo graph can
 > only see one service, so it will report a *falsely small* blast radius for anything

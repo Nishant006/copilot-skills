@@ -36,7 +36,7 @@ Proceed only after answers are received.
 
 > **Breadcrumb rule**: Prefix every action with `Step N/M:` per AGENTS.md §Anti-Drift & Context Persistence Protocol.
 
-> 🔒 **Graphify-First (mandatory)**: Before ANY grep in this skill for architecture analysis (blast-radius, class relationship tracing), check if `graphify-out/graph.json` exists. If it does, run `graphify query` or `graphify path` first. Use grep only to supplement or verify. See `.github/instructions/graphify.instructions.md` for full protocol.
+> 🔒 **Graphify-First (mandatory)**: Before ANY grep in this skill for architecture analysis (blast-radius, class relationship tracing), anchor to the repo root with `cd "$(git rev-parse --show-toplevel)"`, then check if `graphify-out/graph.json` exists (a "graph file not found" error from a subdirectory is NOT a missing graph). If it does, run `graphify query` or `graphify path` first. Use grep only to supplement or verify. See `.github/instructions/graphify.instructions.md` for full protocol.
 
 **Resume support** (see AGENTS.md §Checkpoint & Resume Protocol): On re-invocation with a PR number, check PR comment history for previously posted phase results. If phases 1-3 were already posted, resume from phase 4. Report: "Found previous review phases 1-N posted. Resuming from phase N+1." Ask: "Resume, or re-review from scratch?"
 

@@ -95,7 +95,7 @@ which newman 2>/dev/null && newman --version 2>/dev/null || echo "Newman not ins
 3. Wait for explicit user response. Do NOT proceed without it.
 
 **Mode B:**
-1. Check if `graphify-out/graph.json` exists:
+1. Anchor to the repo root (`cd "$(git rev-parse --show-toplevel)"`), then check if `graphify-out/graph.json` exists (a "graph file not found" error from a subdirectory is NOT a missing graph — see `.github/instructions/graphify.instructions.md` for the full protocol):
    - If YES: run `graphify query "list all REST API endpoints"` to understand full API surface
    - If NO: warn "⚠️ No knowledge graph found. Using grep-based discovery." Then: `grep -rn "@RestController\|@GetMapping\|@PostMapping\|@PutMapping\|@DeleteMapping\|@RequestMapping" src/ --include="*.java"` (adapt for project stack)
 2. Search for existing collections in `postman/`, `tests/`, root

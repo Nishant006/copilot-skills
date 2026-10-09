@@ -402,6 +402,9 @@ copilot-graphify() {
     status)
       echo "🧠 Graphify Status"
       echo ""
+      # Anchor: graph paths resolve relative to cwd, so a subdirectory would
+      # report "no graph" even though the repo has one.
+      cd "\$(git rev-parse --show-toplevel 2>/dev/null || echo .)" || true
       if ! command -v graphify &>/dev/null; then
         echo "  ❌ Not installed"
         echo "  Install: uv tool install graphifyy"
@@ -444,6 +447,9 @@ copilot-graphify() {
       echo "🔄 Updating knowledge graph for: \$(basename \$PWD)"
       echo "   (AST-only, no API key needed; semantic nodes are preserved)"
       echo ""
+      # Anchor to the repo root: graphify resolves graphify-out relative to cwd,
+      # so running this from a subdirectory would build a stray graph there.
+      cd "\$(git rev-parse --show-toplevel 2>/dev/null || echo .)" || true
       if [ -L "graphify-out" ]; then
         echo "   ⚠️  removing shared graphify-out symlink (causes cross-contamination)"
         rm -f graphify-out

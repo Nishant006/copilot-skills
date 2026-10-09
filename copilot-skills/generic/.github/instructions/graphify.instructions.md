@@ -10,9 +10,38 @@ applyTo: "**"
 
 **Before using grep, glob, find, rg, or any file-content search tool for architecture/navigation/relationship questions, you MUST first check for and use graphify.** This is a blocking requirement — not optional, not best-effort.
 
+## ⚠️ Step 0 — Normalise the working directory FIRST (most common cause of false "no graph")
+
+`graphify` resolves `graphify-out/graph.json` **relative to the current working
+directory**, not to the repo root. Running it from any subdirectory fails with
+`error: graph file not found: .../src/main/java/graphify-out/graph.json`, which looks
+identical to "this repo has no graph". **It is not. The graph is there — you are in the
+wrong directory.**
+
+Never conclude "no graph found" from a bare `graphify query`. Always anchor first:
+
+```bash
+# ALWAYS do this before any graphify command
+cd "$(git rev-parse --show-toplevel)" && graphify query "<Identifier>"
+```
+
+This works for normal clones **and** linked worktrees (`--show-toplevel` returns the
+worktree root, which the builder gives its own graph).
+
+If the directory is not inside a git repo at all (e.g. a stray IDE-created folder),
+point graphify at a graph explicitly with the existing `GRAPHIFY_OUT` env var:
+
+```bash
+GRAPHIFY_OUT=/path/to/<repo>/graphify-out graphify query "<Identifier>"
+```
+
+Only after **both** of these fail may you treat the graph as genuinely missing.
+
 ## Enforcement Protocol (execute on EVERY relevant question)
 
 ```
+Step 0 — ANCHOR: cd "$(git rev-parse --show-toplevel)" (see Step 0 section above).
+         A "graph file not found" error from a subdirectory is NOT a missing graph.
 Step 1 — DETECT GRAPH: Check if graphify-out/graph.json exists in the project root.
 Step 2 — CHECK OVERRIDE: Is COPILOT_GRAPHIFY_ENABLED=0 set? If yes → skip graphify, use grep directly.
 Step 3 — CLASSIFY QUESTION: Is this about architecture, relationships, navigation, or code structure?
@@ -203,7 +232,11 @@ Three limits still apply:
 
 ## Fallback Conditions (ONLY these justify skipping graphify)
 
-1. `graphify-out/graph.json` does not exist → warn user, fall back to grep
+1. `graphify-out/graph.json` does not exist **after anchoring to the repo root**
+   (`cd "$(git rev-parse --show-toplevel)"`) → warn user, fall back to grep.
+   A `graph file not found` error raised from a subdirectory does **not** satisfy this
+   condition — re-run from the repo root first. Falling back on an un-anchored error
+   is a protocol violation.
 2. A **targeted** `graphify query`/`explain` on the concrete identifier returned no
    relevant results → document failure, fall back.
    A broad, vaguely-worded query returning generic nodes is **not** sufficient grounds:
@@ -220,6 +253,7 @@ Three limits still apply:
 
 Before issuing grep/glob/rg/find for a code navigation question, the AI MUST pause and verify:
 ```
+□ Did I `cd "$(git rev-parse --show-toplevel)"` before running graphify?
 □ Did I check if graphify-out/graph.json exists?
 □ Did I try graphify query/path/explain first?
 □ Was my query TARGETED (a concrete identifier), not just a vague sentence?

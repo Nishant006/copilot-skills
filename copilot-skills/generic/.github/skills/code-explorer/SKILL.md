@@ -32,12 +32,13 @@ Proceed only after answers are received (skip when invoked as sub-agent — pare
 
 > **Breadcrumb rule**: Prefix every action with `Step N/M:` per AGENTS.md §Anti-Drift & Context Persistence Protocol.
 
-> 🔒 **Graphify-First (mandatory)**: Before ANY grep in this skill, check if `graphify-out/graph.json` exists. If it does, run `graphify query "<target question>"` or `graphify explain "<TargetName>"` first. Use grep only to supplement graphify results or when graph is unavailable. See `.github/instructions/graphify.instructions.md` for full protocol.
+> 🔒 **Graphify-First (mandatory)**: Before ANY grep in this skill, anchor to the repo root with `cd "$(git rev-parse --show-toplevel)"`, then check if `graphify-out/graph.json` exists (a "graph file not found" error from a subdirectory is NOT a missing graph). If it does, run `graphify query "<target question>"` or `graphify explain "<TargetName>"` first. Use grep only to supplement graphify results or when graph is unavailable. See `.github/instructions/graphify.instructions.md` for full protocol.
 
 ## Step 0 — Verify Entry Conditions
 
 ```bash
-# Check: does a knowledge graph exist? (enables graphify-first)
+# Check: does a knowledge graph exist? (anchor to repo root first)
+cd "$(git rev-parse --show-toplevel)" 2>/dev/null || true
 test -f graphify-out/graph.json && echo "✅ Graph found — will use graphify first" || echo "ℹ️ No graph — will use grep discovery"
 ```
 **No hard stop — informational. If graph exists, use graphify query before grepping.**
