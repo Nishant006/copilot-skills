@@ -317,7 +317,7 @@ AI-WORKFLOW.md
 .github/prompts/
 .github/ISSUE_TEMPLATE/
 .github/.copilot-skills-version
-graphify-out
+graphify-out*
 features/
 postman/
 ${gitignore_marker_end}"
@@ -342,7 +342,7 @@ ${gitignore_marker_end}"
   fi
 
   echo ""
-  # Step 12: Link shared graphify
+  # Step 12: Ensure per-repo graphify graph
   link_graphify
   local current_version=$(cat "$SKILLS_ROOT/VERSION" 2>/dev/null | tr -d '[:space:]' || echo '?')
   echo ""
@@ -353,15 +353,6 @@ ${gitignore_marker_end}"
   echo "  Linked at: $(date '+%Y-%m-%d %H:%M')"
   echo "To edit skills: cd $SKILLS_ROOT"
 }
-
-# Run if executed directly (not sourced)
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  if [ "${1:-}" = "--all" ] || [ "${1:-}" = "-a" ]; then
-    link_all
-  else
-    link_skills "$@"
-  fi
-fi
 
 # ─── Status / Check Mode ─────────────────────────────────────────────────────
 check_skills() {
@@ -656,9 +647,15 @@ update_all() {
   fi
 }
 
-# ─── Step 8: Link shared graphify-out ─────────────────────────────────────────
-# Checks: 1) COPILOT_GRAPHIFY_PATH env var, 2) parent directory, 3) skills root sibling
-# Respects: COPILOT_GRAPHIFY_ENABLED=0 to skip linking entirely
+# ─── Step 8: Ensure a per-repo graphify-out ───────────────────────────────────
+# Each repo owns a REAL graphify-out directory. Symlinking several repos at one
+# shared graphify-out makes them all write into the same mutable graph, which
+# cross-contaminates every project's nodes (AST nodes carry relative paths and
+# no repo tag, so they become unattributable). Cross-repo knowledge belongs in
+# the global graph (~/.graphify/global-graph.json), which re-tags nodes per repo
+# — see tools/graphify_build_all.sh.
+#
+# Respects: COPILOT_GRAPHIFY_ENABLED=0 to skip entirely
 link_graphify() {
   # Skip if graphify is disabled
   if [ "${COPILOT_GRAPHIFY_ENABLED:-1}" = "0" ]; then
@@ -667,36 +664,32 @@ link_graphify() {
 
   local target="graphify-out"
 
-  # Skip if graphify-out already exists as real dir (project has its own graph)
-  if [ -d "$target" ] && [ ! -L "$target" ]; then
-    return
-  fi
-
-  # Skip if tracked in git
-  if [ -e "$target" ] && git ls-files -- "$target" 2>/dev/null | grep -q .; then
-    return
-  fi
-
-  # Search order: env var → parent dir → skills root sibling
-  local graph_path=""
-  if [ -n "${COPILOT_GRAPHIFY_PATH:-}" ] && [ -d "$COPILOT_GRAPHIFY_PATH" ] && [ -f "$COPILOT_GRAPHIFY_PATH/graph.json" ]; then
-    graph_path="$COPILOT_GRAPHIFY_PATH"
-  else
-    local parent_graph="$(dirname "$PWD")/graphify-out"
-    if [ -d "$parent_graph" ] && [ -f "$parent_graph/graph.json" ]; then
-      graph_path="$parent_graph"
-    else
-      local skills_sibling="$SKILLS_ROOT/../graphify-out"
-      if [ -d "$skills_sibling" ] && [ -f "$skills_sibling/graph.json" ]; then
-        graph_path="$(cd "$skills_sibling" && pwd)"
-      fi
-    fi
-  fi
-
-  if [ -n "$graph_path" ]; then
+  # Repair the legacy shared-symlink layout.
+  if [ -L "$target" ]; then
+    echo "  ⚠️  graphify-out was a symlink → $(readlink "$target") — removing"
+    echo "     (shared graphs cross-contaminate; each repo needs its own)"
     rm -f "$target"
-    ln -sfn "$graph_path" "$target"
-    echo "  ✅ graphify-out → shared graph ($graph_path)"
+  fi
+
+  # Project already owns a real graph — nothing to do.
+  if [ -d "$target" ] && [ -f "$target/graph.json" ]; then
+    return
+  fi
+
+  if ! command -v graphify &>/dev/null; then
+    return
+  fi
+
+  echo "  🔄 Building per-repo knowledge graph (AST-only, no API key)..."
+  if graphify update . >/dev/null 2>&1 && [ -f "$target/graph.json" ]; then
+    local n
+    n="$(grep -o '"id"' "$target/graph.json" 2>/dev/null | wc -l | tr -d ' ')"
+    echo "  ✅ graphify-out/graph.json built (~$n nodes)"
+    # Register this repo's slice in the global domain graph.
+    graphify global add "$target/graph.json" --as "$(basename "$PWD")" >/dev/null 2>&1 \
+      && echo "  🌍 registered in global graph" || true
+  else
+    echo "  ⚠️  graph build failed — run: copilot-graphify rebuild"
   fi
 }
 
@@ -750,3 +743,19 @@ link_all() {
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "✅ Done! $success projects linked, $skipped skipped (not git repos), $failed failed"
 }
+
+# ─── Direct execution entry point ─────────────────────────────────────────────
+# MUST stay at the very bottom. When this file is sourced (the normal path, via
+# the copilot-link-skills shell function) the whole file is parsed before any
+# call, so helper order does not matter. When it is EXECUTED, bash runs each
+# statement as it is parsed — so a dispatch placed mid-file calls functions that
+# have not been defined yet (link_graphify, defined further down, failed with
+# "command not found" this way). Keeping the dispatch last makes both paths
+# behave identically.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  if [ "${1:-}" = "--all" ] || [ "${1:-}" = "-a" ]; then
+    link_all
+  else
+    link_skills "$@"
+  fi
+fi

@@ -1,1 +1,0 @@
-/Users/nishantbansal/IdeaProjects/.copilot-skills/generic/.github/skills/blast-radius/blast-radius-template.md

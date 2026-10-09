@@ -1,1 +1,0 @@
-/Users/nishantbansal/IdeaProjects/.copilot-skills/projects/communication-dispatcher/.github/skills/implement-and-test/coding-standards-core.md

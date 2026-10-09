@@ -409,22 +409,31 @@ copilot-graphify() {
       fi
       echo "  ✅ Installed: \$(graphify --version 2>/dev/null)"
       echo ""
-      if [ -f "graphify-out/graph.json" ]; then
+      if [ -L "graphify-out" ]; then
+        echo "  ⚠️  graphify-out here is a SYMLINK → \$(readlink graphify-out)"
+        echo "     Sharing one graphify-out across repos cross-contaminates every"
+        echo "     graph. Fix with: copilot-graphify rebuild-all"
+      elif [ -f "graphify-out/graph.json" ]; then
         local mod_date
         mod_date="\$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' graphify-out/graph.json 2>/dev/null || stat -c '%y' graphify-out/graph.json 2>/dev/null | cut -d. -f1)"
         local stale
         stale="\$(find graphify-out/graph.json -mtime +7 -print 2>/dev/null)"
         if [ -n "\$stale" ]; then
-          echo "  ⚠️  Graph: graphify-out/graph.json (STALE — last built: \$mod_date)"
-          echo "  Refresh with: graphify . --update"
+          echo "  ⚠️  Repo graph: graphify-out/graph.json (STALE — built: \$mod_date)"
+          echo "     Refresh with: copilot-graphify rebuild"
         else
-          echo "  ✅ Graph: graphify-out/graph.json (fresh — built: \$mod_date)"
+          echo "  ✅ Repo graph: graphify-out/graph.json (fresh — built: \$mod_date)"
         fi
-      elif [ -L "graphify-out" ] && [ -f "graphify-out/graph.json" ]; then
-        echo "  ✅ Graph: graphify-out → \$(readlink graphify-out) (symlinked)"
       else
-        echo "  ❌ No graph found in current directory"
-        echo "  Build with: graphify ."
+        echo "  ❌ No repo graph in current directory"
+        echo "     Build with: copilot-graphify rebuild"
+      fi
+      echo ""
+      if [ -f "\$HOME/.graphify/global-graph.json" ]; then
+        echo "  ✅ Global graph: \$HOME/.graphify/global-graph.json"
+        graphify global list 2>/dev/null | sed 's/^/     /'
+      else
+        echo "  ❌ No global graph. Build with: copilot-graphify rebuild-all"
       fi
       ;;
     rebuild|build|refresh)
@@ -432,31 +441,36 @@ copilot-graphify() {
         echo "❌ Graphify not installed. Install: uv tool install graphifyy"
         return 1
       fi
-      echo "🔄 Building knowledge graph for: \$(basename \$PWD)"
-      echo "   (AST-only, no API key needed)"
+      echo "🔄 Updating knowledge graph for: \$(basename \$PWD)"
+      echo "   (AST-only, no API key needed; semantic nodes are preserved)"
       echo ""
+      if [ -L "graphify-out" ]; then
+        echo "   ⚠️  removing shared graphify-out symlink (causes cross-contamination)"
+        rm -f graphify-out
+      fi
       graphify update .
-      graphify hook install 2>/dev/null && echo "   🔗 Git hook installed (auto-updates on commit)" || true
+      graphify hook install 2>/dev/null && echo "   🔗 Git hook installed (local only)" || true
+      # Keep this repo's slice of the global graph in step.
+      if [ -f "graphify-out/graph.json" ]; then
+        graphify global add graphify-out/graph.json --as "\$(basename \$PWD)" 2>&1 | tail -1 | sed 's/^/   /'
+        if [ -x "\$COPILOT_SKILLS_ROOT/tools/graphify_cross_link.py" ] || [ -f "\$COPILOT_SKILLS_ROOT/tools/graphify_cross_link.py" ]; then
+          python3 "\$COPILOT_SKILLS_ROOT/tools/graphify_cross_link.py" 2>&1 | tail -1 | sed 's/^/   /'
+        fi
+      fi
       echo ""
-      echo "✅ Graph built. Copilot will now use it for architecture questions."
+      echo "✅ Graph updated. Copilot will use it for architecture questions."
       ;;
     rebuild-all|all)
       if ! command -v graphify &>/dev/null; then
         echo "❌ Graphify not installed. Install: uv tool install graphifyy"
         return 1
       fi
-      local parent_dir="\$(cd "\$COPILOT_SKILLS_ROOT/.." && pwd)"
-      echo "🔄 Rebuilding graphs for all projects in: \$parent_dir"
-      echo ""
-      for dir in "\$parent_dir"/*/; do
-        if [ -d "\$dir/.git" ]; then
-          echo "  📦 \$(basename "\$dir")..."
-          (cd "\$dir" && graphify update . 2>&1 | tail -2) || echo "  ⚠️  Failed"
-          (cd "\$dir" && graphify hook install 2>/dev/null) || true
-          echo ""
-        fi
-      done
-      echo "✅ All project graphs rebuilt."
+      local builder="\$COPILOT_SKILLS_ROOT/tools/graphify_build_all.sh"
+      if [ ! -f "\$builder" ]; then
+        echo "❌ Missing \$builder"
+        return 1
+      fi
+      bash "\$builder" --root "\$(cd "\$COPILOT_SKILLS_ROOT/.." && pwd)"
       ;;
     query|q)
       shift
@@ -531,7 +545,10 @@ copilot-graphify() {
       echo ""
       echo "Configuration:"
       echo "  COPILOT_GRAPHIFY_ENABLED=0   Disable graphify integration"
-      echo "  COPILOT_GRAPHIFY_PATH=<dir>  Custom graphify-out location"
+      echo ""
+      echo "Layers:"
+      echo "  <repo>/graphify-out/graph.json   per-repo detail (one service)"
+      echo "  ~/.graphify/global-graph.json    all services + cross-repo links"
       ;;
     *)
       echo "❌ Unknown command: \$cmd"
@@ -678,6 +695,31 @@ $MARKER_END
 BLOCK
 }
 
+# ─── Two-layer graphify build ─────────────────────────────────────────────────
+# Delegates to tools/graphify_build_all.sh, which is the single source of truth
+# for how graphs are built. Both setup.sh and the `copilot-graphify rebuild-all`
+# shell function call it, so the two can never drift apart.
+#
+# The build is update-only and safe to re-run: per-repo graphs are merged (never
+# truncated), the global graph replaces one repo slice at a time, and the
+# cross-linker removes its own previous edges before re-adding them.
+graphify_build_two_layer() {
+  if [ "${COPILOT_GRAPHIFY_ENABLED:-1}" = "0" ]; then
+    echo "   ℹ️  Graphify disabled (COPILOT_GRAPHIFY_ENABLED=0) — skipping graph build"
+    return 0
+  fi
+  local builder="$SKILLS_ROOT/tools/graphify_build_all.sh"
+  if [ ! -x "$builder" ]; then
+    if [ -f "$builder" ]; then
+      chmod +x "$builder" 2>/dev/null || true
+    else
+      echo "   ❌ Missing $builder — cannot build graphs."
+      return 1
+    fi
+  fi
+  "$builder" --root "$(cd "$SKILLS_ROOT/.." && pwd)" 2>&1 | sed 's/^/   /'
+}
+
 # ─── Install into a shell RC file ─────────────────────────────────────────────
 install_to_rc() {
   local rc_file="$1"
@@ -820,12 +862,12 @@ main() {
   echo ""
 
   # Optional: graphify setup hint
-  if [ -d "$SKILLS_ROOT/../graphify-out" ]; then
-    echo "ℹ️  Graphify detected at: $(cd "$SKILLS_ROOT/.." && pwd)/graphify-out"
-    echo "   It will auto-link into projects. To customize:"
-    echo "   export COPILOT_GRAPHIFY_PATH=/path/to/your/graphify-out"
+  if [ -f "$HOME/.graphify/global-graph.json" ]; then
+    echo "ℹ️  Graphify global domain graph: $HOME/.graphify/global-graph.json"
+    echo "   Per-repo graphs live in each project's own graphify-out/."
     echo ""
   fi
+
 
   # ─── Graphify Interactive Setup ─────────────────────────────────────────────
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -844,6 +886,10 @@ main() {
   echo "      • Auto-generates architecture diagrams"
   echo "      • Replaces broad grep searches with scoped queries"
   echo ""
+  echo "   Two layers are maintained:"
+  echo "      1. Per repo — <repo>/graphify-out/graph.json (full detail, one service)"
+  echo "      2. Global   — ~/.graphify/global-graph.json (all services + links)"
+  echo ""
 
   if command -v graphify &>/dev/null; then
     local gv
@@ -851,33 +897,28 @@ main() {
     echo "   ✅ Graphify is already installed (v$gv)"
     echo ""
 
-    # Check if graph exists
-    if [ -f "$SKILLS_ROOT/../graphify-out/graph.json" ]; then
+    local global_graph="$HOME/.graphify/global-graph.json"
+    if [ -f "$global_graph" ]; then
       local graph_age
-      graph_age="$(find "$SKILLS_ROOT/../graphify-out/graph.json" -mtime +7 -print 2>/dev/null)"
+      graph_age="$(find "$global_graph" -mtime +7 -print 2>/dev/null)"
       if [ -n "$graph_age" ]; then
         echo "   ⚠️  Knowledge graph is older than 7 days."
-        echo -n "   Rebuild graph for all projects? [Y/n] "
-        read -r rebuild_answer </dev/tty 2>/dev/null || rebuild_answer="n"
-        if [ "${rebuild_answer:-Y}" != "n" ] && [ "${rebuild_answer:-Y}" != "N" ]; then
-          echo ""
-          echo "   🔄 Rebuilding graph (AST-only, no API key needed)..."
-          (cd "$SKILLS_ROOT/.." && graphify update . 2>&1 | tail -5)
-          echo "   ✅ Graph rebuilt."
-        fi
       else
         echo "   ✅ Knowledge graph is fresh."
       fi
+      # Always refresh on setup. The build is update-only and idempotent:
+      # per-repo graphs are merged (semantic nodes preserved), the global graph
+      # replaces one repo slice at a time, and the cross-linker removes its own
+      # previous edges before re-adding. Re-running can only bring it up to date.
+      echo "   🔄 Updating every repo graph + the global graph..."
+      echo ""
+      graphify_build_two_layer
     else
-      echo -n "   Build knowledge graph for your projects? [Y/n] "
-      read -r build_answer </dev/tty 2>/dev/null || build_answer="n"
-      if [ "${build_answer:-Y}" != "n" ] && [ "${build_answer:-Y}" != "N" ]; then
-        echo ""
-        echo "   🔄 Building graph (AST-only, no API key needed)..."
-        (cd "$SKILLS_ROOT/.." && graphify update . 2>&1 | tail -5)
-        echo "   ✅ Graph built at: $SKILLS_ROOT/../graphify-out/"
-      fi
+      echo "   🔄 No global graph yet — building both layers..."
+      echo ""
+      graphify_build_two_layer
     fi
+
   else
     echo -n "   Install Graphify? [Y/n] "
     read -r install_answer </dev/tty 2>/dev/null || install_answer="n"
@@ -908,13 +949,13 @@ main() {
         echo "   🔧 Registering with Copilot..."
         graphify install --platform copilot 2>&1 | sed 's/^/   /' || true
         echo ""
-        echo -n "   Build knowledge graph now? [Y/n] "
-        read -r build_answer </dev/tty 2>/dev/null || build_answer="n"
-        if [ "${build_answer:-Y}" != "n" ] && [ "${build_answer:-Y}" != "N" ]; then
-          echo "   🔄 Building graph (AST-only, no API key needed)..."
-          (cd "$SKILLS_ROOT/.." && graphify update . 2>&1 | tail -5)
-          echo "   ✅ Graph built at: $SKILLS_ROOT/../graphify-out/"
-        fi
+        # Build without prompting, exactly like the already-installed path above.
+        # A fresh install has no graphs at all, so there is nothing a prompt could
+        # protect: skipping here would leave every repo without a graph until the
+        # next run. Opt out with COPILOT_GRAPHIFY_ENABLED=0.
+        echo "   🔄 Building every repo graph + the global graph..."
+        echo ""
+        graphify_build_two_layer
       else
         echo ""
         echo "   ⚠️  Installation may require PATH update. Try: exec \$SHELL && graphify --version"

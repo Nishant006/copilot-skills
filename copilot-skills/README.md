@@ -178,14 +178,40 @@ Usage in Copilot CLI:
 | Variable | Purpose | Default |
 |---|---|---|
 | `COPILOT_SKILLS_ROOT` | Override skills location | Auto-detected from setup.sh |
-| `COPILOT_GRAPHIFY_PATH` | Custom graphify-out location | Auto-detected (parent dir or sibling) |
+| `COPILOT_GRAPHIFY_ENABLED` | Set to `0` to disable graphify integration | `1` |
 
-### Graphify Integration
+### Graphify Integration — two layers
 
-If you use [graphify](https://github.com/nicosalm/graphify) for codebase knowledge graphs:
-- Place `graphify-out/` as a sibling to `.copilot-skills/` (same parent directory)
-- Or set `COPILOT_GRAPHIFY_PATH=/path/to/graphify-out`
-- `copilot-link-skills` will auto-link it into each project
+Knowledge graphs are maintained in **two layers**. Both are refreshed by `./setup.sh`
+and by `copilot-skills graphify rebuild-all`.
+
+| Layer | Location | Contains | Use it for |
+|---|---|---|---|
+| **Per repo** | `<repo>/graphify-out/graph.json` | Every node of **one** service — AST + semantic | Detail: "where is X", "what calls Y" inside a service |
+| **Global** | `~/.graphify/global-graph.json` | All repos, each node tagged `repo` and id-namespaced `<repo>::<id>`, plus cross-repo edges | Discovery: "which services share this contract", "how do A and B integrate" |
+
+**Query workflow:** start **global** to see which services are involved, then drop into
+the relevant **per-repo** graph for implementation detail.
+
+```bash
+./setup.sh                            # builds/updates BOTH layers for every sibling repo
+copilot-skills graphify rebuild-all   # same thing, any time
+copilot-skills graphify rebuild       # current repo only (+ its global slice)
+copilot-skills graphify status        # show both layers
+graphify global list                  # which repos are in the global graph
+```
+
+Both are **update-only** and safe to re-run: per-repo graphs are merged (semantic
+nodes are preserved), the global graph replaces one repo's slice at a time, and the
+cross-linker removes its own previous edges before re-adding them.
+
+> ⛔ **Never symlink several repos at one shared `graphify-out`.**
+> `graphify update` merges into whatever graph it finds, and AST nodes carry only a
+> relative path with no repo attribute — so a shared directory silently mixes every
+> service's code together and the nodes become unattributable. Cross-repo knowledge
+> belongs in the global graph, which **re-tags** nodes per repo on the way in; a
+> symlink cannot do that. `link-skills.sh` detects and removes any such symlink.
+
 
 ---
 

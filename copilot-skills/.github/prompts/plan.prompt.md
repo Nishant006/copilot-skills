@@ -1,1 +1,0 @@
-/Users/nishantbansal/IdeaProjects/.copilot-skills/generic/.github/prompts/plan.prompt.md

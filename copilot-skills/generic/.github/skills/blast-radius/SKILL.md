@@ -47,6 +47,36 @@ Canonical sub-agent for impact analysis. Invoke before any rename, removal, sign
 
 > 🔒 **Graphify-First (mandatory)**: Before ANY grep in this skill, check if `graphify-out/graph.json` exists. If it does, run `graphify path "TargetName" "*"` first to get callers and dependents from the knowledge graph. Use grep only to supplement or verify graphify results. See `.github/instructions/graphify.instructions.md` for full protocol.
 
+> 🌍 **Cross-repo blast radius (mandatory for shared contracts)**: the per-repo graph can
+> only see one service, so it will report a *falsely small* blast radius for anything
+> other services also consume — DTOs, event payloads, Kafka topics, Service Bus
+> queues, REST paths, headers, enum values. For those targets you MUST also check the
+> global graph:
+>
+> ```bash
+> # Which other services reference this symbol?
+> python3 -c "
+> import json,sys
+> t=sys.argv[1].lower()
+> g=json.load(open('$HOME/.graphify/global-graph.json'))
+> byid={n['id']:n for n in g['nodes']}
+> hits=[n for n in g['nodes'] if t in (n.get('label') or '').lower()]
+> repos={}
+> for n in hits: repos.setdefault(n.get('repo','?'),[]).append(n['label'])
+> for r,v in repos.items(): print(f'{r}: {len(v)} node(s)  e.g. {v[:3]}')
+> x=[e for e in g.get('links',[]) if e.get('_cross_link') and (e['source'] in {n[\"id\"] for n in hits} or e['target'] in {n[\"id\"] for n in hits})]
+> print(f'cross-repo edges touching target: {len(x)}')
+> for e in x[:10]:
+>     s,d=byid.get(e['source'],{}),byid.get(e['target'],{})
+>     print(f\"  {s.get('repo')}:{s.get('label')} -> {d.get('repo')}:{d.get('label')}\")
+> " "TargetName"
+> ```
+>
+> If the target appears in more than one repo, the blast radius table MUST include a
+> **Cross-repo impact** section naming each affected service — a change that looks safe
+> inside one repo can break a consumer in another. If the global graph is missing, say so
+> explicitly and mark the cross-repo radius as *unverified* rather than assuming zero.
+
 ## Step 0 — Verify Target
 
 ```bash

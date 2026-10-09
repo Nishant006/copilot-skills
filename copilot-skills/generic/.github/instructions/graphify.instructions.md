@@ -16,8 +16,16 @@ applyTo: "**"
 Step 1 — DETECT GRAPH: Check if graphify-out/graph.json exists in the project root.
 Step 2 — CHECK OVERRIDE: Is COPILOT_GRAPHIFY_ENABLED=0 set? If yes → skip graphify, use grep directly.
 Step 3 — CLASSIFY QUESTION: Is this about architecture, relationships, navigation, or code structure?
+Step 3b — CHECK SCOPE: Does the question span MORE THAN ONE service/repo?
+          (e.g. "which services use X", "how does service A talk to service B")
 Step 4 — CHECK STALENESS: If graph exists, is it older than 7 days? (find graphify-out/graph.json -mtime +7)
 Step 5 — ROUTE:
+  ├── CROSS-REPO question → use the GLOBAL graph: ~/.graphify/global-graph.json
+  │     Nodes are tagged with `repo` and ids are namespaced `<repo>::<local_id>`.
+  │     Edges with `_cross_link: true` mark shared contracts between services,
+  │     tiered HIGH (events/topics/DTOs/clients) or MEDIUM (shared types).
+  │     Then drop into the owning repo's per-repo graph for implementation detail.
+  │
   ├── Graph EXISTS + fresh + Architecture question → MUST use graphify FIRST
   │     ├── graphify query "<question>"         → for "how does X work?", "where is X?"
   │     ├── graphify path "<A>" "<B>"           → for "how does A relate to B?"
@@ -27,14 +35,20 @@ Step 5 — ROUTE:
   ├── Graph EXISTS + STALE (>7 days) + Architecture question → STILL use graphify FIRST
   │     Warn: "⚠️ Knowledge graph is older than 7 days. Using it but results may be outdated."
   │     Then proceed with graphify query — stale data > no graph.
-  │     Suggest: "Run `graphify . --update` to refresh."
+  │     Suggest: "Run `copilot-skills graphify rebuild` to refresh."
+  │
+  ├── Graph EXISTS + broad query returned mostly generic nodes → RETRY before falling back
+  │     A vague question ("how does X work?") can surface low-value schema leaves
+  │     (`payload`, `properties`, `type`). Re-query with the concrete identifier
+  │     (e.g. `graphify query "BrazeEventTrackingService"`) or use `graphify explain`.
+  │     Only fall back to grep if a TARGETED query also comes up short.
   │
   ├── Graph EXISTS + graphify returned insufficient results → THEN fall back to grep/glob/view
   │     (Document: "Graphify did not surface enough detail. Falling back to grep.")
   │
   ├── Graph MISSING + Architecture question → Suggest building graph first:
-  │     "⚠️ No knowledge graph found. Build one with `graphify .` (CLI) or `/graphify` (Copilot Chat).
-  │      Falling back to grep/glob for now."
+  │     "⚠️ No knowledge graph found. Build one with `copilot-skills graphify rebuild`
+  │      (this repo) or `rebuild-all` (every repo + global). Falling back to grep for now."
   │     Then proceed with grep/glob/view.
   │
   ├── COPILOT_GRAPHIFY_ENABLED=0 → Use grep/glob/view directly (env opt-out respected)
@@ -42,6 +56,82 @@ Step 5 — ROUTE:
   └── NOT an architecture/navigation question → Use grep/glob/view directly
         (e.g., specific code edits, test runs, build commands, known file paths)
 ```
+
+## Two-layer graph model
+
+| Layer | Path | Scope |
+|---|---|---|
+| Per repo | `<repo>/graphify-out/graph.json` | One service, full detail (AST + semantic) |
+| Global | `~/.graphify/global-graph.json` | All services, repo-tagged + cross-repo edges |
+
+A per-repo graph must contain **only its own repo**. If a query from repo A returns
+files belonging to repo B, the graph is contaminated — rebuild with
+`copilot-skills graphify rebuild-all`.
+
+> ⛔ Never symlink several repos at one shared `graphify-out`. `graphify update` merges
+> into whatever graph it finds, and AST nodes carry only a relative path with no repo
+> attribute, so a shared directory silently mixes every service together. Cross-repo
+> knowledge belongs in the global graph, which re-tags nodes per repo on the way in.
+
+### Cross-repo lookup recipe
+
+Use this whenever a question involves a **shared contract** — a DTO, event payload,
+Kafka topic, Service Bus queue, REST path, header name, or enum value that more than
+one service touches. The per-repo graph physically cannot see those consumers, so
+relying on it alone produces a falsely narrow answer.
+
+```bash
+python3 - "SymbolName" <<'PY'
+import json, os, sys
+term = sys.argv[1].lower()
+path = os.path.expanduser("~/.graphify/global-graph.json")
+if not os.path.exists(path):
+    sys.exit("global graph missing — run ./setup.sh (cross-repo impact UNVERIFIED)")
+g = json.load(open(path))
+byid = {n["id"]: n for n in g["nodes"]}
+hits = [n for n in g["nodes"] if term in (n.get("label") or "").lower()]
+repos = {}
+for n in hits:
+    repos.setdefault(n.get("repo", "?"), []).append(n["label"])
+print(f"'{sys.argv[1]}' appears in {len(repos)} repo(s):")
+for r, v in sorted(repos.items()):
+    print(f"  {r}: {len(v)} node(s) — e.g. {v[:3]}")
+ids = {n["id"] for n in hits}
+x = [e for e in g.get("links", [])
+     if e.get("_cross_link") and (e["source"] in ids or e["target"] in ids)]
+print(f"cross-repo edges touching it: {len(x)}")
+for e in x[:10]:
+    s, d = byid.get(e["source"], {}), byid.get(e["target"], {})
+    print(f"  {s.get('repo')}:{s.get('label')} -> {d.get('repo')}:{d.get('label')}")
+PY
+```
+
+Rules:
+* More than one repo in the output ⇒ the answer **must** name every affected service.
+* Global graph missing ⇒ say so and mark cross-repo impact **unverified**. Never
+  report it as zero.
+* Always return to the owning repo's graph for line-level detail; the global layer is
+  for *who is involved*, not *how it works*.
+
+
+## Query Phrasing — the single most common failure
+
+Graphify seeds its traversal from ~2-3 tokens in your query. A long prose sentence
+donates its most generic words as seeds and lands you in schema/doc noise instead of
+source code.
+
+| ❌ Vague (fails) | ✅ Targeted (works) |
+|---|---|
+| `"Alecto out of stock substitution flow: which classes send the WhatsApp message"` | `"AlectoClient"` |
+| `"How does Braze event tracking work?"` | `"BrazeEventTrackingService"` |
+
+**Always query the concrete identifier first** — class, method, topic, or config key.
+Use prose only after an identifier query has already given you an anchor.
+
+A vague query that returns only generic or `.ai/` doc nodes is **not** grounds to fall
+back to grep — retry with the concrete identifier first. Falling back after only a
+vague query is a protocol violation (see Fallback Conditions below).
+
 
 ## What Counts as an Architecture/Navigation Question (USE GRAPHIFY)
 
@@ -78,10 +168,47 @@ Step 5 — ROUTE:
 
 The staleness check is part of Step 4 in the enforcement protocol above. No separate action needed — the AI checks graph age as part of the routing flow. Stale graphs are still used (with a warning); they are never silently skipped.
 
+## Branch switches and uncommitted work
+
+Each repo has these local git hooks (they live in `.git/hooks`, so they are never
+committed or pushed). `rebuild-all` installs them:
+
+| Hook | Fires on | Effect |
+|---|---|---|
+| `post-commit` | every commit | incremental AST rebuild of changed files |
+| `post-checkout` | real branch switch only | full background AST rebuild, 600s cap, logs to `~/.cache/graphify-rebuild.log` |
+| `post-merge` | `git merge` / `git pull` | symlink to `post-commit` |
+| `post-rewrite` | `git rebase`, `git commit --amend` | symlink to `post-commit` |
+
+The last two are symlinks because graphify ships only the first two, and git never
+fires `post-commit` for a merge commit — without them every `git pull` left the
+graph stale.
+
+Three limits still apply:
+
+1. **Hooks are AST-only.** They never call an LLM, so new `.ai/` docs, rationale and
+   config knowledge are *not* picked up. Run `/graphify .` for those.
+2. **Uncommitted work is invisible.** Code written but not yet committed is in no
+   graph. If a query about code you just wrote returns nothing, that is expected —
+   commit, or run `graphify update .`, before trusting the answer.
+3. **The graph is not branch-aware.** There is one graph per directory, stamped with
+   `built_at_commit`. Switching branches rewrites it in place.
+
+> If an AST-only rebuild would produce fewer nodes than the stored graph, graphify
+> refuses to overwrite it (`Refusing to overwrite`). That guard is deliberate: it
+> stops a code-only rebuild from wiping LLM-extracted semantic nodes. Do **not**
+> force past it in a hook. `rebuild-all` is the correct fix — it re-attaches the
+> semantic layer from `~/.graphify/semantic-backup/` after every update.
+
+
 ## Fallback Conditions (ONLY these justify skipping graphify)
 
 1. `graphify-out/graph.json` does not exist → warn user, fall back to grep
-2. `graphify query` returned no relevant results → document failure, fall back
+2. A **targeted** `graphify query`/`explain` on the concrete identifier returned no
+   relevant results → document failure, fall back.
+   A broad, vaguely-worded query returning generic nodes is **not** sufficient grounds:
+   retry with the specific class/method/topic name first. Falling back after only a
+   vague query is a protocol violation.
 3. Graph is stale (> 7 days old) → warn user, use graph anyway but note staleness
 4. Question is purely about file content (not structure) → grep directly
 5. User explicitly said "don't use graphify" or "just grep" → respect override
@@ -95,6 +222,8 @@ Before issuing grep/glob/rg/find for a code navigation question, the AI MUST pau
 ```
 □ Did I check if graphify-out/graph.json exists?
 □ Did I try graphify query/path/explain first?
+□ Was my query TARGETED (a concrete identifier), not just a vague sentence?
+□ Is this a cross-repo question? If so, did I check ~/.graphify/global-graph.json?
 □ If I'm skipping graphify, do I have a valid reason from the Fallback Conditions list?
 □ If graphify is unavailable, did I inform the user?
 ```

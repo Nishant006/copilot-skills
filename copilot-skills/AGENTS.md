@@ -194,11 +194,28 @@ Conflict resolution:
 
 | Copilot action | What to use |
 |---|---|
-| "Where is X?" / "How does Y work?" | `graphify query "<question>"` |
+| "Where is X?" / "How does Y work?" | `graphify query "<question>"` (per-repo graph) |
 | "How does A relate to B?" | `graphify path "A" "B"` |
 | "Explain the concept of X" | `graphify explain "X"` |
+| "Which services share/use X?" | Global graph — `~/.graphify/global-graph.json` |
 | Broad architecture review | Read `graphify-out/GRAPH_REPORT.md` |
-| Graph missing or stale | Suggest: `graphify .` (missing graph) or `graphify . --update` (stale graph) |
+| Graph missing or stale | Suggest: `copilot-skills graphify rebuild` (this repo) or `rebuild-all` (every repo + global) |
+
+**Two-layer model** — queries resolve in this order:
+
+| Layer | Path | Scope |
+|---|---|---|
+| Per repo | `<repo>/graphify-out/graph.json` | One service, full detail (AST + semantic) |
+| Global | `~/.graphify/global-graph.json` | All services, repo-tagged, + cross-repo integration edges |
+
+Start global to find **which** services are involved, then use that service's per-repo
+graph for the detail. A per-repo graph contains only its own repo — if a query returns
+another service's files, the graph is contaminated; rebuild with `copilot-skills graphify rebuild-all`.
+
+> ⛔ **Never point several repos at one shared `graphify-out` via symlink.** It silently
+> mixes every service's AST nodes into one unattributable graph. Cross-repo knowledge
+> belongs in the global graph, which re-tags nodes per repo.
+
 
 **Setup check protocol:**
 ```
